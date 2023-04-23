@@ -47,11 +47,11 @@
 #pragma pack(push, 1) // Disable padding
 	typedef struct {
 		uint32_t Magic;					// = 'kif1'
-		uint8_t bpp;					// 3 = RGB, 4 = RGBA (24/32bit palette)
+		uint8_t BPP;					// 3 = RGB, 4 = RGBA (24/32bit palette)
 		uint8_t Compressed;				// Will at the moment be 0, as we have no compression yet.
 		uint16_t palEntries;			// Number of palette entries (bpp * palEntries = bytes to read after header to get the palette. Limited to 65K unique colors.)		
-		uint16_t width;					// Width
-		uint16_t height;				// Heigth
+		uint16_t Width;					// Width
+		uint16_t Height;				// Heigth
 		uint32_t RLEEntries;			// Number of 2 byte RLE encoded data entries (paletteID, Run Length)
 	} KIFHeader;	//  Header is 16 bytes
 
@@ -153,16 +153,15 @@ void *kif_decode(const void *Data, KIFHeader *Header, int OutputBPP){
 		return NULL;
 	}
 
-	// Todo: Do we really need this cast or can we just use Data?
 	const unsigned char* data_bytes = (const unsigned char*)Data; // Cast data to unsigned char pointer
 
 	// Fill the header struct
 	Header->Magic = _read32bit(data_bytes);
-	Header->bpp = data_bytes[4];
+	Header->BPP = data_bytes[4];
 	Header->Compressed = data_bytes[5];
 	Header->palEntries = _read16bit(data_bytes + 6);
-	Header->width = _read16bit(data_bytes + 8);
-	Header->height = _read16bit(data_bytes + 10);
+	Header->Width = _read16bit(data_bytes + 8);
+	Header->Height = _read16bit(data_bytes + 10);
 	Header->RLEEntries = _read32bit(data_bytes + 12);
 
     // Allocate memory for palette data
@@ -179,7 +178,7 @@ void *kif_decode(const void *Data, KIFHeader *Header, int OutputBPP){
 	// Allocate memory for pixel buffer / decoded image
 	unsigned char* Decoded;
 
-	Decoded = (unsigned char*)malloc(Header->width * Header->height * 4);    // 4 Bytes per pixel
+	Decoded = (unsigned char*)malloc(Header->Width * Header->Height * 4);    // 4 Bytes per pixel
 
 	int DecodedIndex = 0; // Index for writing to pixel buffer
 
@@ -232,23 +231,23 @@ void *kif_encode(const void *Data, KIFHeader *Header, int *OutputLength){
     Header->palEntries = NumberOfColors;
 
     // Allocate memory for encoded data
-	kif_rle_t *encoded_data = (kif_rle_t *)malloc(Header->width * Header->height * sizeof(kif_rle_t));
+	kif_rle_t *Encoded = (kif_rle_t *)malloc(Header->Width * Header->Height * sizeof(kif_rle_t));
 
 	// Return if malloc failed
-    if(encoded_data == NULL){
+    if(Encoded == NULL){
         return NULL;
     }
 
-    int encoded_data_index = 0; // Index for encoded data buffer
+    int EncodedIndex = 0; // Index for encoded data buffer
 
     // Run-length encode pixels
     int num_rle_entries = 0; // Number of run length encoded pixels
 
-	int data_len = Header->width * Header->height;
+	int DataLen = Header->Width * Header->Height;
 	
 	uint32_t *px_data = (uint32_t *)Data;
 
-	for(int i = 0; i < data_len; i++){
+	for(int i = 0; i < DataLen; i++){
 		kif_rgba_t Color;
 		kif_rle_t px_rle;
 
@@ -269,24 +268,24 @@ void *kif_encode(const void *Data, KIFHeader *Header, int *OutputLength){
 		i--;
 
 		px_rle.rle = rl;
-		encoded_data[num_rle_entries] = px_rle;
+		Encoded[num_rle_entries] = px_rle;
 		num_rle_entries++;
 
 		rl = 0; // Reset run length counter to 0
 
 		// Update encoded data index
-		encoded_data_index++;
+		EncodedIndex++;
 	}
 	
 	Header->Magic =  0x6B696631;	// 'kif1'
-	Header->bpp = 4;
+	Header->BPP = 4;
 	Header->Compressed = 0;
 
     // Write number of run length encoded pixels to header
     Header->RLEEntries = num_rle_entries;
 
     // Calculate total size of the output buffer
-    int TotalSize = sizeof(KIFHeader) + (sizeof(kif_rgba_t) * NumberOfColors) + (encoded_data_index * sizeof(kif_rle_t));
+    int TotalSize = sizeof(KIFHeader) + (sizeof(kif_rgba_t) * NumberOfColors) + (EncodedIndex * sizeof(kif_rle_t));
 
     // Allocate memory for the final output buffer
     unsigned char *OutputBuffer = (unsigned char *)malloc(TotalSize);
@@ -298,13 +297,13 @@ void *kif_encode(const void *Data, KIFHeader *Header, int *OutputLength){
     memcpy(OutputBuffer + sizeof(KIFHeader), Palette, (sizeof(kif_rgba_t) * NumberOfColors));	
 
     // Copy encoded data to output buffer
-    memcpy(OutputBuffer +  sizeof(KIFHeader) + (sizeof(kif_rgba_t) * NumberOfColors), encoded_data, (encoded_data_index * sizeof(kif_rle_t)));
+    memcpy(OutputBuffer +  sizeof(KIFHeader) + (sizeof(kif_rgba_t) * NumberOfColors), Encoded, (EncodedIndex * sizeof(kif_rle_t)));
 
     // Update output length
 	*OutputLength = TotalSize;
 
 	// Free allocated memory
-	free(encoded_data);
+	free(Encoded);
 
     // Return pointer to the output buffer
     return OutputBuffer;
@@ -334,7 +333,7 @@ static void _generate_palette(const void *Data, KIFHeader *Header, kif_rgba_t *P
     Palette[0].v = 0x00000000;
     (*NumberOfColors)++;
 
-	int PaletteDataLength = Header->width * Header->height;
+	int PaletteDataLength = Header->Width * Header->Height;
 	//int palette_index;	//	TODO: Looks like this can be deleted.
 	int Pos;
 
